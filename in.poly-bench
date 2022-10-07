@@ -1,0 +1,63 @@
+##------ Fast grain-boundary relaxation routine.
+## This Routine requires two datasets with the same simulation box.
+## Each set contains the atoms that belong to either the grain-boundary
+## or the grain itself, which names follow respetively the name convention:
+##    {name}_boundaries.data    and    {name}_grains.data
+## This routine follows the two-step process proposed by Gupta et al.
+## (Gupta et al. MethodsX,8 (2021), 101217)
+##				by Javier Rojas (ver. 0.2-bechmark)
+##------
+
+### User variables
+variable	T equal 1000		# Plateau temperature
+variable	rtime equal 1000	# Standard conditions steps
+# v_file es el nombre raiz de los archivos de entrada con los distintos grupos
+
+### General setup
+units		metal
+boundary	p p p
+atom_style	atomic
+
+### Simulation setup
+region		sim block 0 1 0 1 0 1
+create_box	1 sim
+read_data	Ni10nm_310pm_grains.data add merge group grain
+read_data	Ni10nm_310pm_boundaries.data add merge group boundary
+pair_style      eam/alloy
+pair_coeff      * * Ni99.eam.alloy Ni
+replicate	3 3 3
+
+group		grain delete
+group		boundary delete
+
+run		0
+#variable	E0 equal ${c_thermo_pe}
+#variable	dE equal c_thermo_pe-v_E0
+#variable	E2 equal c_thermo_pe*c_thermo_pe
+#fix		Emeans all 1 10000 10000 
+
+timestep	0.001
+thermo		100
+
+###------
+### Two-step process (No modifications needed)
+###------
+
+### Heating routine following Gupta et al. grain boundary relaxation two-step process
+### (* Variable values. Showed default values for Ni)
+### -> Init. stab. :: 300K      - 0.1 ns (Only GB / NVT)
+### -> Trans. ramp :: 300-1000K*- 0.1 ns (Only GB / NVT)
+### -> HT. bstab.  :: 1000K*    - 0.7 ns*(Only GB / NVT)
+### -> Trans. ramp :: 1000*-300K- 0.1 ns (Only GB / NVT)
+### -> Whole stab. :: 300K      - 2.0 ns*(All     / NPT)
+
+### Only GB heating section
+thermo_style	custom time step temp ke pe etotal
+
+#fix		spotout all ave/time 1 1 1000 c_thermo_temp c_thermo_press c_thermo_pe file det_stab.dat 
+#fix		averages all ave/time 10 1000 10000 c_thermo_temp c_thermo_press c_thermo_pe file ave_stab.dat
+#fix		repress all npt temp 300 300 0.01 x 0 0 0.1 y 0 0 0.1 z 0 0 0.1
+fix		repress all nve
+run		${rtime}
+
+#write_data      poly_final.data
